@@ -17,7 +17,7 @@ struct ContentView: View {
     @State private var withdrawFeeBrl = "0.0"
     @State private var iofPct = "0.0"
     @State private var fxRateOverride = ""
-    @State private var resultText = ""
+    @State private var result: WorkHoursResult?
     @State private var isLoading = false
 
     // Dependencies
@@ -156,10 +156,9 @@ struct ContentView: View {
                     }
                 }
 
-                if !resultText.isEmpty {
+                if let result = result {
                     Section(header: Text("Resultado")) {
-                        Text(resultText)
-                            .font(.system(.body, design: .monospaced))
+                        ResultTableView(result: result)
                     }
                 }
             }
@@ -189,7 +188,7 @@ struct ContentView: View {
             let iofPctValue = Double(iofPct)
         else {
             await MainActor.run {
-                resultText = "Valores de entrada inválidos."
+                result = nil
             }
             return
         }
@@ -214,10 +213,10 @@ struct ContentView: View {
             includeXmasEve: true
         )
 
-        let result = await calculator.calculate(options: options)
+        let calculatedResult = await calculator.calculate(options: options)
         
         await MainActor.run {
-            resultText = result.summaryText
+            result = calculatedResult
             isLoading = false
         }
     }
@@ -240,6 +239,121 @@ private extension View {
         ZStack(alignment: alignment) {
             placeholder().opacity(shouldShow ? 1 : 0)
             self
+        }
+    }
+}
+
+// MARK: - Result Table View
+
+struct ResultTableView: View {
+    let result: WorkHoursResult
+    
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM/yyyy (EEE)"
+        return formatter
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Horas trabalhadas
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Horas Trabalhadas")
+                    .font(.headline)
+                
+                TableRow(label: "Dias úteis", value: "\(result.workDays) dias (\(result.workHours)h)")
+                TableRow(label: "Feriados pagos", value: "\(result.paidHolidays) dias (\(result.holidayHours)h)")
+                TableRow(label: "Total de horas", value: "\(result.totalHours)h", isHighlighted: true)
+            }
+            
+            Divider()
+            
+            // Valores em USD
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Valores em USD")
+                    .font(.headline)
+                
+                TableRow(label: "Taxa horária", value: String(format: "$%.2f USD/h", result.totalHours > 0 ? result.grossUsd / Double(result.totalHours) : 0))
+                TableRow(label: "Valor total (USD)", value: String(format: "$%.2f", result.grossUsd), isHighlighted: true)
+            }
+            
+            if let fxRate = result.fxRate {
+                Divider()
+                
+                // Conversão BRL
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Conversão USD → BRL")
+                        .font(.headline)
+                    
+                    if let source = result.fxSource, let asOf = result.fxAsOf {
+                        TableRow(label: "Taxa FX", value: String(format: "%.4f BRL/USD", fxRate))
+                        TableRow(label: "Fonte", value: "\(source)")
+                        TableRow(label: "Data", value: asOf)
+                    }
+                    
+                    TableRow(label: "BRL bruto", value: String(format: "R$ %.2f", result.conversionGrossBrl))
+                    TableRow(label: "Spread (\(String(format: "%.2f", result.conversionGrossBrl > 0 ? result.spreadFeeBrl / result.conversionGrossBrl * 100 : 0))%)", value: String(format: "-R$ %.2f", result.spreadFeeBrl))
+                    TableRow(label: "BRL líquido", value: String(format: "R$ %.2f", result.conversionNetBrl), isHighlighted: true)
+                }
+                
+                // Taxas de saque (se aplicável)
+                if let withdrawFees = result.withdrawFeesBrl, let withdrawNet = result.withdrawNetBrl {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Taxas de Saque")
+                            .font(.headline)
+                        
+                        TableRow(label: "Total de taxas", value: String(format: "-R$ %.2f", withdrawFees))
+                        TableRow(label: "Valor líquido final", value: String(format: "R$ %.2f", withdrawNet), isHighlighted: true)
+                    }
+                }
+            } else {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Taxa de Câmbio")
+                        .font(.headline)
+                    
+                    Text("Indisponível (offline ou erro na API)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            // Feriados do mês
+            if !result.paidHolidayDates.isEmpty {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Feriados no Mês")
+                        .font(.headline)
+                    
+                    ForEach(result.paidHolidayDates, id: \.self) { date in
+                        Text(dateFormatter.string(from: date))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct TableRow: View {
+    let label: String
+    let value: String
+    var isHighlighted: Bool = false
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(isHighlighted ? .headline : .body)
+                .foregroundStyle(isHighlighted ? .primary : .primary)
         }
     }
 }

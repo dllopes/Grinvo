@@ -168,8 +168,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                .onChange(of: result) { _ in
-                    if result != nil {
+                .onChange(of: result) { oldValue, newValue in
+                    if newValue != nil {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             withAnimation {
                                 proxy.scrollTo("result", anchor: .top)

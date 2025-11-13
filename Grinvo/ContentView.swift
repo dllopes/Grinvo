@@ -10,12 +10,15 @@ import SwiftUI
 struct ContentView: View {
     // State
     @State private var selectedMonth = Date()
-    @State private var hourlyRate = "18"
+    @State private var hourlyRate = "15"
     @State private var spreadPct = "1.0"
     @State private var withdrawFeePct = "0.0"
     @State private var withdrawFeeBrl = "0.0"
     @State private var iofPct = "0.0"
+    @State private var fxRateOverride = ""
+    @State private var fxLabelOverride = ""
     @State private var resultText = ""
+    @State private var isLoading = false
 
     // Dependencies
     private let calculator = WorkHoursCalculator()
@@ -37,6 +40,15 @@ struct ContentView: View {
                     TextField("Spread (%)", text: $spreadPct)
                         .applyDecimalKeyboard()
                 }
+                
+                Section(header: Text("Taxa de Câmbio (Opcional)")) {
+                    TextField("Taxa FX manual (BRL/USD)", text: $fxRateOverride)
+                        .applyDecimalKeyboard()
+                    TextField("Label da taxa manual", text: $fxLabelOverride)
+                        .placeholder(when: fxLabelOverride.isEmpty) {
+                            Text("Manual override")
+                        }
+                }
 
                 Section(header: Text("Taxas de saque")) {
                     TextField("Taxa de saque (%)", text: $withdrawFeePct)
@@ -49,7 +61,19 @@ struct ContentView: View {
 
                 Section {
                     Button("Gerar fatura") {
-                        generateInvoice()
+                        Task {
+                            await generateInvoice()
+                        }
+                    }
+                    .disabled(isLoading)
+                    
+                    if isLoading {
+                        HStack {
+                            ProgressView()
+                            Text("Buscando taxa de câmbio...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -77,7 +101,7 @@ struct ContentView: View {
 
     // MARK: - Actions
 
-    private func generateInvoice() {
+    private func generateInvoice() async {
         guard
             let hourlyRateValue = Double(hourlyRate),
             let spreadValue = Double(spreadPct),
@@ -85,10 +109,20 @@ struct ContentView: View {
             let withdrawFeeBrlValue = Double(withdrawFeeBrl),
             let iofPctValue = Double(iofPct)
         else {
-            resultText = "Valores de entrada inválidos."
+            await MainActor.run {
+                resultText = "Valores de entrada inválidos."
+            }
             return
         }
+        
+        // Parse FX override if provided
+        let fxRateOverrideValue: Double? = fxRateOverride.isEmpty ? nil : Double(fxRateOverride)
+        let fxLabelOverrideValue: String? = fxLabelOverride.isEmpty ? nil : fxLabelOverride
 
+        await MainActor.run {
+            isLoading = true
+        }
+        
         let options = WorkHoursOptions(
             month: selectedMonth,
             hourlyRate: hourlyRateValue,
@@ -96,12 +130,18 @@ struct ContentView: View {
             withdrawFeePct: withdrawFeePctValue,
             withdrawFeeBrl: withdrawFeeBrlValue,
             iofPct: iofPctValue,
-            fxRate: Double?(nil),
-            mode: WorkHoursOptions.Mode.both
+            fxRate: fxRateOverrideValue,
+            fxLabel: fxLabelOverrideValue,
+            mode: .both,
+            includeXmasEve: true
         )
 
-        let result = calculator.calculate(options: options)
-        resultText = result.summaryText
+        let result = await calculator.calculate(options: options)
+        
+        await MainActor.run {
+            resultText = result.summaryText
+            isLoading = false
+        }
     }
 }
 
@@ -113,6 +153,16 @@ private extension View {
         #else
         self
         #endif
+    }
+    
+    func placeholder<Content: View>(
+        when shouldShow: Bool,
+        alignment: Alignment = .leading,
+        @ViewBuilder placeholder: () -> Content) -> some View {
+        ZStack(alignment: alignment) {
+            placeholder().opacity(shouldShow ? 1 : 0)
+            self
+        }
     }
 }
 

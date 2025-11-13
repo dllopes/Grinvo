@@ -82,12 +82,16 @@ struct WorkHoursCalculator {
             
             if options.mode == .withdraw || options.mode == .both {
                 let nomad = calculatePayout(conversionAmount: conversionGrossBrl, feePct: options.nomadFeePct)
-                nomadFeesBrl = nomad.fees
-                nomadNetBrl = nomad.net
+                if options.includeNomad {
+                    nomadFeesBrl = nomad.fees
+                    nomadNetBrl = nomad.net
+                }
                 
                 let higlobe = calculatePayout(conversionAmount: conversionGrossBrl, feePct: options.higlobeFeePct)
-                higlobeFeesBrl = higlobe.fees
-                higlobeNetBrl = higlobe.net
+                if options.includeHiglobe {
+                    higlobeFeesBrl = higlobe.fees
+                    higlobeNetBrl = higlobe.net
+                }
             }
         }
         
@@ -317,6 +321,8 @@ struct WorkHoursCalculator {
                 summary += "    Taxa: \(String(format: "%.2f", nomadFeePct))%\n"
                 if let fees = nomadFeesBrl {
                     summary += "    Tarifas: R$ \(String(format: "%.2f", fees))\n"
+                } else {
+                    summary += "    Desativado\n"
                 }
                 if let net = nomadNetBrl {
                     summary += "    Líquido: R$ \(String(format: "%.2f", net))\n"
@@ -326,6 +332,8 @@ struct WorkHoursCalculator {
                 summary += "    Taxa: \(String(format: "%.2f", higlobeFeePct))%\n"
                 if let fees = higlobeFeesBrl {
                     summary += "    Tarifas: R$ \(String(format: "%.2f", fees))\n"
+                } else {
+                    summary += "    Desativado\n"
                 }
                 if let net = higlobeNetBrl {
                     summary += "    Líquido: R$ \(String(format: "%.2f", net))\n"

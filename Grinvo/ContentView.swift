@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var nomadFeePct = "1.0"
     @State private var higlobeFeePct = "0.3"
     @State private var fxRateOverride = ""
+    @State private var isNomadEnabled = true
+    @State private var isHiglobeEnabled = true
     @State private var result: WorkHoursResult?
     @State private var isLoading = false
 
@@ -128,25 +130,37 @@ struct ContentView: View {
 
                     Section(header: Text("Taxas de saque")) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Nomad / Husky (%)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Percentual descontado pela Nomad/Husky ao enviar BRL")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            Toggle(isOn: $isNomadEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Nomad / Husky")
+                                        .font(.caption)
+                                        .foregroundStyle(.primary)
+                                    Text("Percentual descontado pela Nomad/Husky ao enviar BRL")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(SwitchToggleStyle(tint: .green))
                             TextField("Ex: 1.0", text: $nomadFeePct)
                                 .applyDecimalKeyboard()
+                                .disabled(!isNomadEnabled)
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("HiGlobe (%)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Percentual descontado pela HiGlobe ao enviar BRL")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            Toggle(isOn: $isHiglobeEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("HiGlobe")
+                                        .font(.caption)
+                                        .foregroundStyle(.primary)
+                                    Text("Percentual descontado pela HiGlobe ao enviar BRL")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(SwitchToggleStyle(tint: .green))
                             TextField("Ex: 0.3", text: $higlobeFeePct)
                                 .applyDecimalKeyboard()
+                                .disabled(!isHiglobeEnabled)
                         }
                     }
 
@@ -209,14 +223,17 @@ struct ContentView: View {
     private func generateInvoice() async {
         guard
             let hourlyRateValue = Double(hourlyRate),
-            let nomadFeePctValue = Double(nomadFeePct),
-            let higlobeFeePctValue = Double(higlobeFeePct)
+            (!isNomadEnabled || Double(nomadFeePct) != nil),
+            (!isHiglobeEnabled || Double(higlobeFeePct) != nil)
         else {
             await MainActor.run {
                 result = nil
             }
             return
         }
+        
+        let nomadFeePctValue = isNomadEnabled ? (Double(nomadFeePct) ?? 0) : 0
+        let higlobeFeePctValue = isHiglobeEnabled ? (Double(higlobeFeePct) ?? 0) : 0
         
         // Parse FX override if provided
         let fxRateOverrideValue: Double? = fxRateOverride.isEmpty ? nil : Double(fxRateOverride)
@@ -230,6 +247,8 @@ struct ContentView: View {
             hourlyRate: hourlyRateValue,
             nomadFeePct: nomadFeePctValue,
             higlobeFeePct: higlobeFeePctValue,
+            includeNomad: isNomadEnabled,
+            includeHiglobe: isHiglobeEnabled,
             fxRate: fxRateOverrideValue,
             fxLabel: nil, // Always use default "Manual override" label
             mode: .both,

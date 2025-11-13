@@ -12,6 +12,8 @@ struct WorkHoursOptions {
     var hourlyRate: Double
     var nomadFeePct: Double
     var higlobeFeePct: Double
+    var includeNomad: Bool
+    var includeHiglobe: Bool
     var fxRate: Double?
     var fxLabel: String?
     var mode: Mode
@@ -28,6 +30,8 @@ struct WorkHoursOptions {
         hourlyRate: Double,
         nomadFeePct: Double,
         higlobeFeePct: Double,
+        includeNomad: Bool = true,
+        includeHiglobe: Bool = true,
         fxRate: Double? = nil,
         fxLabel: String? = nil,
         mode: Mode = .both,
@@ -37,6 +41,8 @@ struct WorkHoursOptions {
         self.hourlyRate = hourlyRate
         self.nomadFeePct = nomadFeePct
         self.higlobeFeePct = higlobeFeePct
+        self.includeNomad = includeNomad
+        self.includeHiglobe = includeHiglobe
         self.fxRate = fxRate
         self.fxLabel = fxLabel
         self.mode = mode

@@ -115,6 +115,13 @@ struct ContentView: View {
                 }
             }
         }
+        .onChange(of: selectedTab) { newValue in
+            focusedField = nil
+            hideKeyboard()
+            if newValue == .result {
+                Task { await generateInvoice() }
+            }
+        }
         .simultaneousGesture(TapGesture().onEnded {
             focusedField = nil
         })
@@ -203,15 +210,19 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                Group {
-                    switch selectedTab {
-                    case .home:
-                        homeContent
-                    case .result:
-                        resultContent
-                    }
+                TabView(selection: $selectedTab) {
+                    homeContent
+                        .tag(Tab.home)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .background(Color(.systemBackground))
+                    
+                    resultContent
+                        .tag(Tab.result)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .background(Color(.systemGroupedBackground))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
                 
                 VStack(spacing: 12) {
                     tabBar

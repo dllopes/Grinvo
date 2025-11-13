@@ -21,10 +21,124 @@ struct ContentView: View {
     @State private var isHiglobeEnabled = true
     @State private var result: WorkHoursResult?
     @State private var isLoading = false
+    @FocusState private var focusedField: Field?
+    @State private var selectedTab: Tab = .home
 
     // Dependencies
     private let calculator = WorkHoursCalculator()
     private let calendar = Calendar.current
+    
+    private enum Field: Hashable {
+        case hourlyRate
+        case fxRate
+        case nomadFee
+        case higlobeFee
+    }
+
+    private var homeContent: some View {
+        Form {
+            Section(header: Text("Mês da fatura")) {
+                HStack {
+                    Text("Mês - Ano")
+                    Spacer()
+                    Picker(selection: $selectedMonthYearIndex) {
+                        ForEach(Array(monthYearOptions.enumerated()), id: \.offset) { index, option in
+                            Text(option.label).tag(index)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+
+            Section(header: Text("Taxas")) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Valor hora (USD/hora)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Ex: 15", text: $hourlyRate)
+                        .applyDecimalKeyboard()
+                        .focused($focusedField, equals: .hourlyRate)
+                }
+            }
+            
+            Section(header: Text("Taxa de Câmbio (Opcional)")) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Taxa manual (BRL/USD)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Deixe vazio para buscar automaticamente via API")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    TextField("Ex: 5.40", text: $fxRateOverride)
+                        .applyDecimalKeyboard()
+                        .focused($focusedField, equals: .fxRate)
+                }
+            }
+
+            Section(header: Text("Taxas de saque")) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $isNomadEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Nomad / Husky")
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                            Text("Percentual descontado pela Nomad/Husky ao enviar BRL")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .green))
+                    TextField("Ex: 1.0", text: $nomadFeePct)
+                        .applyDecimalKeyboard()
+                        .disabled(!isNomadEnabled)
+                        .focused($focusedField, equals: .nomadFee)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $isHiglobeEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("HiGlobe")
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                            Text("Percentual descontado pela HiGlobe ao enviar BRL")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .green))
+                    TextField("Ex: 0.3", text: $higlobeFeePct)
+                        .applyDecimalKeyboard()
+                        .disabled(!isHiglobeEnabled)
+                        .focused($focusedField, equals: .higlobeFee)
+                }
+            }
+        }
+        .simultaneousGesture(TapGesture().onEnded {
+            focusedField = nil
+        })
+        .safeAreaPadding(.bottom, 140)
+    }
+    
+    private enum Tab: String, CaseIterable {
+        case home
+        case result
+        
+        var title: String {
+            switch self {
+            case .home: return "Principal"
+            case .result: return "Calcular Saque"
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .home: return "house.fill"
+            case .result: return "banknote"
+            }
+        }
+    }
     
     private static let monthNames = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -88,133 +202,126 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                Form {
-                    Section(header: Text("Mês da fatura")) {
-                        HStack {
-                            Text("Mês - Ano")
-                            Spacer()
-                            Picker(selection: $selectedMonthYearIndex) {
-                                ForEach(Array(monthYearOptions.enumerated()), id: \.offset) { index, option in
-                                    Text(option.label).tag(index)
-                                }
-                            } label: {
-                                EmptyView()
-                            }
-                            .pickerStyle(.menu)
-                        }
-                    }
-
-                    Section(header: Text("Taxas")) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Valor hora (USD/hora)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextField("Ex: 15", text: $hourlyRate)
-                                .applyDecimalKeyboard()
-                        }
-                    }
-                    
-                    Section(header: Text("Taxa de Câmbio (Opcional)")) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Taxa manual (BRL/USD)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Deixe vazio para buscar automaticamente via API")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            TextField("Ex: 5.40", text: $fxRateOverride)
-                                .applyDecimalKeyboard()
-                        }
-                    }
-
-                    Section(header: Text("Taxas de saque")) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Toggle(isOn: $isNomadEnabled) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Nomad / Husky")
-                                        .font(.caption)
-                                        .foregroundStyle(.primary)
-                                    Text("Percentual descontado pela Nomad/Husky ao enviar BRL")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .toggleStyle(SwitchToggleStyle(tint: .green))
-                            TextField("Ex: 1.0", text: $nomadFeePct)
-                                .applyDecimalKeyboard()
-                                .disabled(!isNomadEnabled)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Toggle(isOn: $isHiglobeEnabled) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("HiGlobe")
-                                        .font(.caption)
-                                        .foregroundStyle(.primary)
-                                    Text("Percentual descontado pela HiGlobe ao enviar BRL")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .toggleStyle(SwitchToggleStyle(tint: .green))
-                            TextField("Ex: 0.3", text: $higlobeFeePct)
-                                .applyDecimalKeyboard()
-                                .disabled(!isHiglobeEnabled)
-                        }
-                    }
-
-                    Section {
-                        Button("Gerar fatura") {
-                            hideKeyboard()
-                            Task {
-                                await generateInvoice()
-                            }
-                        }
-                        .disabled(isLoading)
-                        
-                        if isLoading {
-                            HStack {
-                                ProgressView()
-                                Text("Buscando taxa de câmbio...")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    if let result = result {
-                        Section(header: Text("Resultado")) {
-                            Text("Fatura de \(selectedMonthYearLabel)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            ResultTableView(result: result)
-                                .id("result")
-                        }
+            ZStack(alignment: .bottom) {
+                Group {
+                    switch selectedTab {
+                    case .home:
+                        homeContent
+                    case .result:
+                        resultContent
                     }
                 }
-                .onChange(of: result) { oldValue, newValue in
-                    if newValue != nil {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation {
-                                proxy.scrollTo("result", anchor: .top)
-                            }
-                        }
-                    }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                
+                VStack(spacing: 12) {
+                    tabBar
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 10)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
                         Text("Grinvo - by Diego L.")
                             .font(.headline)
-                        Text("Assistente de fatura mensal")
+                        Text(selectedTab == .home ? "Assistente de fatura mensal" : "Resumo de saque")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
+            .onChange(of: selectedTab) { newValue in
+                focusedField = nil
+                hideKeyboard()
+                if newValue == .result {
+                    Task {
+                        await generateInvoice()
+                    }
+                }
+            }
+        }
+    }
+
+    private var resultContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Calculando saque...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+                
+                if let result = result {
+                    Text("Último cálculo")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    ResultTableView(result: result)
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "chart.bar.doc.horizontal")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Nenhum cálculo ainda")
+                            .font(.headline)
+                        Text("Use a aba Principal para informar os dados e abra esta aba para calcular o saque.")
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 60)
+                }
+            }
+            .padding()
+        }
+        .background(Color(.systemGroupedBackground))
+        .simultaneousGesture(TapGesture().onEnded {
+            focusedField = nil
+        })
+        .safeAreaPadding(.bottom, 140)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 16) {
+            tabBarItem(for: .home)
+            tabBarItem(for: .result)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+    }
+
+    @ViewBuilder
+    private func tabBarItem(for tab: Tab) -> some View {
+        let isSelected = selectedTab == tab
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedTab = tab
+                focusedField = nil
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: tab.icon)
+                    .imageScale(.medium)
+                Text(tab.title)
+                    .font(.subheadline)
+                    .fontWeight(isSelected ? .semibold : .regular)
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.25) : Color.clear)
+            )
         }
     }
 

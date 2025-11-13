@@ -9,54 +9,133 @@ import SwiftUI
 
 struct ContentView: View {
     // State
-    @State private var selectedMonth = Date()
+    @State private var selectedYear: Int
+    @State private var selectedMonthIndex: Int
     @State private var hourlyRate = "15"
     @State private var spreadPct = "1.0"
     @State private var withdrawFeePct = "0.0"
     @State private var withdrawFeeBrl = "0.0"
     @State private var iofPct = "0.0"
     @State private var fxRateOverride = ""
-    @State private var fxLabelOverride = ""
     @State private var resultText = ""
     @State private var isLoading = false
 
     // Dependencies
     private let calculator = WorkHoursCalculator()
+    private let calendar = Calendar.current
+    
+    private let monthNames = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    
+    private var years: [Int] {
+        let currentYear = calendar.component(.year, from: Date())
+        return [currentYear - 1, currentYear, currentYear + 1]
+    }
+    
+    private var selectedMonthDate: Date {
+        calendar.date(from: DateComponents(year: selectedYear, month: selectedMonthIndex + 1, day: 1)) ?? Date()
+    }
+    
+    init() {
+        let now = Date()
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: now)
+        let month = calendar.component(.month, from: now)
+        _selectedYear = State(initialValue: year)
+        _selectedMonthIndex = State(initialValue: month - 1)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text("Mês da fatura")) {
-                    DatePicker(
-                        "Mês",
-                        selection: $selectedMonth,
-                        displayedComponents: [.date]
-                    )
+                    HStack {
+                        Text("Mês")
+                        Spacer()
+                        Picker(selection: $selectedMonthIndex) {
+                            ForEach(0..<12) { index in
+                                Text(monthNames[index]).tag(index)
+                            }
+                        } label: {
+                            EmptyView()
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    
+                    HStack {
+                        Text("Ano")
+                        Spacer()
+                        Picker(selection: $selectedYear) {
+                            ForEach(years, id: \.self) { year in
+                                Text(String(year)).tag(year)
+                            }
+                        } label: {
+                            EmptyView()
+                        }
+                        .pickerStyle(.menu)
+                    }
                 }
 
                 Section(header: Text("Taxas")) {
-                    TextField("Valor hora (USD/hora)", text: $hourlyRate)
-                        .applyDecimalKeyboard()
-                    TextField("Spread (%)", text: $spreadPct)
-                        .applyDecimalKeyboard()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Valor hora (USD/hora)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 15", text: $hourlyRate)
+                            .applyDecimalKeyboard()
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Spread (%)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Percentual deduzido após conversão USD→BRL")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 1.0", text: $spreadPct)
+                            .applyDecimalKeyboard()
+                    }
                 }
                 
                 Section(header: Text("Taxa de Câmbio (Opcional)")) {
-                    TextField("Taxa FX manual (BRL/USD)", text: $fxRateOverride)
-                        .applyDecimalKeyboard()
-                    TextField("Label da taxa manual", text: $fxLabelOverride)
-                        .placeholder(when: fxLabelOverride.isEmpty) {
-                            Text("Manual override")
-                        }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Taxa manual (BRL/USD)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Deixe vazio para buscar automaticamente via API")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 5.40", text: $fxRateOverride)
+                            .applyDecimalKeyboard()
+                    }
                 }
 
-                Section(header: Text("Taxas de saque")) {
-                    TextField("Taxa de saque (%)", text: $withdrawFeePct)
-                        .applyDecimalKeyboard()
-                    TextField("Taxa fixa de saque (BRL)", text: $withdrawFeeBrl)
-                        .applyDecimalKeyboard()
-                    TextField("IOF / extra (%)", text: $iofPct)
-                        .applyDecimalKeyboard()
+                Section(header: Text("Taxas de saque (opcional)")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Taxa percentual (%)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 1.2", text: $withdrawFeePct)
+                            .applyDecimalKeyboard()
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Taxa fixa (BRL)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 7.90", text: $withdrawFeeBrl)
+                            .applyDecimalKeyboard()
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("IOF / Taxa extra (%)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Ex: 0.38", text: $iofPct)
+                            .applyDecimalKeyboard()
+                    }
                 }
 
                 Section {
@@ -117,21 +196,20 @@ struct ContentView: View {
         
         // Parse FX override if provided
         let fxRateOverrideValue: Double? = fxRateOverride.isEmpty ? nil : Double(fxRateOverride)
-        let fxLabelOverrideValue: String? = fxLabelOverride.isEmpty ? nil : fxLabelOverride
 
         await MainActor.run {
             isLoading = true
         }
         
         let options = WorkHoursOptions(
-            month: selectedMonth,
+            month: selectedMonthDate,
             hourlyRate: hourlyRateValue,
             spreadPct: spreadValue,
             withdrawFeePct: withdrawFeePctValue,
             withdrawFeeBrl: withdrawFeeBrlValue,
             iofPct: iofPctValue,
             fxRate: fxRateOverrideValue,
-            fxLabel: fxLabelOverrideValue,
+            fxLabel: nil, // Always use default "Manual override" label
             mode: .both,
             includeXmasEve: true
         )

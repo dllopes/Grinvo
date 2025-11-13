@@ -55,14 +55,17 @@ struct ContentView: View {
                 }
             }
 
-            Section(header: Text("Taxas")) {
+            Section(header: Text("Valor Hora")) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Valor hora (USD/hora)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("Ex: 15", text: $hourlyRate)
+                    TextField("Valor hora em USD", text: $hourlyRate)
                         .applyDecimalKeyboard()
                         .focused($focusedField, equals: .hourlyRate)
+                        .font(.headline)
+                    if let displayValue = formattedHourlyRate {
+                        Text(displayValue)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             
@@ -154,6 +157,15 @@ struct ContentView: View {
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ]
+    
+    private var formattedHourlyRate: String? {
+        guard let value = Double(hourlyRate) else { return nil }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value))
+    }
     
     private var years: [Int] {
         let currentYear = calendar.component(.year, from: Date())

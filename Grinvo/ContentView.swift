@@ -12,24 +12,9 @@ import UIKit
 
 struct ContentView: View {
     // State
-    @State private var selectedMonthYearIndex: Int
-    @State private var hourlyRate = "15"
-    @State private var nomadFeePct = "1.0"
-    @State private var higlobeFeePct = "0.3"
-    @State private var fxRateOverride = ""
-    @State private var isNomadEnabled = true
-    @State private var isHiglobeEnabled = true
-    @State private var result: WorkHoursResult?
-    @State private var isLoading = false
-    @State private var hasCalculatedOnce = false
+    @StateObject private var viewModel = InvoiceViewModel()
     @FocusState private var focusedField: Field?
     @State private var selectedTab: Tab = .home
-    @State private var calculationSequence = 0
-    @State private var calculationDebounceTask: Task<Void, Never>?
-
-    // Dependencies
-    private let calculator = WorkHoursCalculator()
-    private let calendar = Calendar.current
     
     private enum Field: Hashable {
         case hourlyRate
@@ -44,8 +29,8 @@ struct ContentView: View {
                 HStack {
                     Text("Mês - Ano")
                     Spacer()
-                    Picker(selection: $selectedMonthYearIndex) {
-                        ForEach(Array(monthYearOptions.enumerated()), id: \.offset) { index, option in
+                    Picker(selection: $viewModel.selectedMonthYearIndex) {
+                        ForEach(Array(viewModel.monthYearOptions.enumerated()), id: \.offset) { index, option in
                             Text(option.label).tag(index)
                         }
                     } label: {
@@ -57,11 +42,11 @@ struct ContentView: View {
 
             Section(header: Text("Valor Hora")) {
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("Valor hora em USD", text: $hourlyRate)
+                    TextField("Valor hora em USD", text: $viewModel.hourlyRate)
                         .applyDecimalKeyboard()
                         .focused($focusedField, equals: .hourlyRate)
                         .font(.headline)
-                    if let displayValue = formattedHourlyRate {
+                    if let displayValue = viewModel.formattedHourlyRate {
                         Text(displayValue)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -77,7 +62,7 @@ struct ContentView: View {
                     Text("Deixe vazio para buscar automaticamente via API")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    TextField("Ex: 5.40", text: $fxRateOverride)
+                    TextField("Ex: 5.40", text: $viewModel.fxRateOverride)
                         .applyDecimalKeyboard()
                         .focused($focusedField, equals: .fxRate)
                 }
@@ -85,7 +70,7 @@ struct ContentView: View {
 
             Section(header: Text("Taxas de saque")) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle(isOn: $isNomadEnabled) {
+                    Toggle(isOn: $viewModel.isNomadEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Nomad / Husky")
                                 .font(.caption)
@@ -96,14 +81,14 @@ struct ContentView: View {
                         }
                     }
                     .toggleStyle(SwitchToggleStyle(tint: .green))
-                    TextField("Ex: 1.0", text: $nomadFeePct)
+                    TextField("Ex: 1.0", text: $viewModel.nomadFeePct)
                         .applyDecimalKeyboard()
-                        .disabled(!isNomadEnabled)
+                        .disabled(!viewModel.isNomadEnabled)
                         .focused($focusedField, equals: .nomadFee)
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle(isOn: $isHiglobeEnabled) {
+                    Toggle(isOn: $viewModel.isHiglobeEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("HiGlobe")
                                 .font(.caption)
@@ -114,9 +99,9 @@ struct ContentView: View {
                         }
                     }
                     .toggleStyle(SwitchToggleStyle(tint: .green))
-                    TextField("Ex: 0.3", text: $higlobeFeePct)
+                    TextField("Ex: 0.3", text: $viewModel.higlobeFeePct)
                         .applyDecimalKeyboard()
-                        .disabled(!isHiglobeEnabled)
+                        .disabled(!viewModel.isHiglobeEnabled)
                         .focused($focusedField, equals: .higlobeFee)
                 }
             }
@@ -125,13 +110,6 @@ struct ContentView: View {
             focusedField = nil
         })
         .safeAreaPadding(.bottom, 140)
-        .onChange(of: selectedMonthYearIndex) { _ in triggerAutoCalculation() }
-        .onChange(of: hourlyRate) { _ in triggerAutoCalculation() }
-        .onChange(of: fxRateOverride) { _ in triggerAutoCalculation() }
-        .onChange(of: nomadFeePct) { _ in triggerAutoCalculation() }
-        .onChange(of: higlobeFeePct) { _ in triggerAutoCalculation() }
-        .onChange(of: isNomadEnabled) { _ in triggerAutoCalculation() }
-        .onChange(of: isHiglobeEnabled) { _ in triggerAutoCalculation() }
     }
     
     private enum Tab: String, CaseIterable {
@@ -153,75 +131,6 @@ struct ContentView: View {
         }
     }
     
-    private static let monthNames = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ]
-    
-    private var formattedHourlyRate: String? {
-        guard let value = Double(hourlyRate) else { return nil }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value))
-    }
-    
-    private var years: [Int] {
-        let currentYear = calendar.component(.year, from: Date())
-        return [currentYear - 1, currentYear, currentYear + 1]
-    }
-    
-    private var selectedMonthDate: Date {
-        guard monthYearOptions.indices.contains(selectedMonthYearIndex) else {
-            return Date()
-        }
-        return monthYearOptions[selectedMonthYearIndex].date
-    }
-    
-    private var monthYearOptions: [(label: String, date: Date)] {
-        ContentView.buildMonthYearOptions(calendar: calendar, years: years)
-    }
-    
-    private var selectedMonthYearLabel: String {
-        guard monthYearOptions.indices.contains(selectedMonthYearIndex) else {
-            return "Período selecionado"
-        }
-        return monthYearOptions[selectedMonthYearIndex].label
-    }
-    
-    private static func buildMonthYearOptions(
-        calendar: Calendar,
-        years: [Int]
-    ) -> [(label: String, date: Date)] {
-        var options: [(label: String, date: Date)] = []
-        
-        for year in years {
-            for month in 1...12 {
-                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else {
-                    continue
-                }
-                let label = "\(Self.monthNames[month - 1]) - \(year)"
-                options.append((label: label, date: date))
-            }
-        }
-        
-        return options.sorted { $0.date > $1.date }
-    }
-    
-    init() {
-        let now = Date()
-        let calendar = Calendar.current
-        let year = calendar.component(.year, from: now)
-        let years = [year - 1, year, year + 1]
-        let options = ContentView.buildMonthYearOptions(calendar: calendar, years: years)
-        let defaultIndex = options.firstIndex {
-            calendar.isDate($0.date, equalTo: now, toGranularity: .month) &&
-            calendar.isDate($0.date, equalTo: now, toGranularity: .year)
-        } ?? 0
-        _selectedMonthYearIndex = State(initialValue: defaultIndex)
-    }
-
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -261,8 +170,8 @@ struct ContentView: View {
             .onChange(of: selectedTab) { newValue in
                 focusedField = nil
                 hideKeyboard()
-                if newValue == .result && !hasCalculatedOnce {
-                    triggerAutoCalculation(immediate: true)
+                if newValue == .result {
+                    viewModel.handleResultTabAppear()
                 }
             }
         }
@@ -271,7 +180,7 @@ struct ContentView: View {
     private var resultContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if isLoading {
+                if viewModel.isLoading {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text("Calculando saque...")
@@ -281,12 +190,12 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
                 
-                if let result = result {
+                if let result = viewModel.result {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Último cálculo")
                             .font(.headline)
                             .foregroundStyle(.secondary)
-                        Text("Período: \(selectedMonthYearLabel)")
+                        Text("Período: \(viewModel.selectedMonthYearLabel)")
                             .font(.subheadline)
                             .foregroundStyle(.primary)
                     }
@@ -354,69 +263,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Actions
-
-    private func generateInvoice(calculationID: Int) async {
-        guard
-            let hourlyRateValue = Double(hourlyRate),
-            (!isNomadEnabled || Double(nomadFeePct) != nil),
-            (!isHiglobeEnabled || Double(higlobeFeePct) != nil)
-        else {
-            await MainActor.run {
-                if calculationID == calculationSequence {
-                    result = nil
-                    isLoading = false
-                }
-            }
-            return
-        }
-        
-        let nomadFeePctValue = isNomadEnabled ? (Double(nomadFeePct) ?? 0) : 0
-        let higlobeFeePctValue = isHiglobeEnabled ? (Double(higlobeFeePct) ?? 0) : 0
-        
-        // Parse FX override if provided
-        let fxRateOverrideValue: Double? = fxRateOverride.isEmpty ? nil : Double(fxRateOverride)
-
-        await MainActor.run {
-            guard calculationID == calculationSequence else { return }
-            isLoading = true
-        }
-        
-        let options = WorkHoursOptions(
-            month: selectedMonthDate,
-            hourlyRate: hourlyRateValue,
-            nomadFeePct: nomadFeePctValue,
-            higlobeFeePct: higlobeFeePctValue,
-            includeNomad: isNomadEnabled,
-            includeHiglobe: isHiglobeEnabled,
-            fxRate: fxRateOverrideValue,
-            fxLabel: nil, // Always use default "Manual override" label
-            mode: .both,
-            includeXmasEve: true
-        )
-
-        let calculatedResult = await calculator.calculate(options: options)
-        await MainActor.run {
-            guard calculationID == calculationSequence else { return }
-            result = calculatedResult
-            isLoading = false
-            hasCalculatedOnce = true
-        }
-    }
-    
-    @MainActor
-    private func triggerAutoCalculation(immediate: Bool = false) {
-        calculationSequence += 1
-        let requestID = calculationSequence
-        calculationDebounceTask?.cancel()
-        calculationDebounceTask = Task {
-            if !immediate {
-                try? await Task.sleep(nanoseconds: 350_000_000)
-            }
-            guard !Task.isCancelled else { return }
-            await generateInvoice(calculationID: requestID)
-        }
-    }
 }
 
 private extension View {

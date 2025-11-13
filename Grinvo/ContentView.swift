@@ -520,10 +520,9 @@ struct ResultTableView: View {
                     Text("Conversão USD → BRL")
                         .font(.headline)
                     
-                    if let source = result.fxSource, let asOf = result.fxAsOf {
+                    if let asOf = result.fxAsOf {
                         TableRow(label: "Taxa FX", value: String(format: "%.4f BRL/USD", fxRate))
-                        TableRow(label: "Fonte", value: "\(source)")
-                        TableRow(label: "Data", value: asOf)
+                        TableRow(label: "Atualizado em", value: asOf)
                     }
                     
                     TableRow(label: "BRL convertido", value: formatCurrencyBRL(result.conversionGrossBrl), isHighlighted: true)

@@ -167,7 +167,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .onChange(of: selectedTab) { newValue in
+            .onChange(of: selectedTab) { oldValue, newValue in
                 focusedField = nil
                 hideKeyboard()
                 if newValue == .result {

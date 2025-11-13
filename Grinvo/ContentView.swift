@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    // State
     @State private var selectedMonth = Date()
     @State private var hourlyRate = "18"
     @State private var spreadPct = "1.0"
@@ -16,51 +17,65 @@ struct ContentView: View {
     @State private var iofPct = "0.0"
     @State private var resultText = ""
 
+    // Dependencies
     private let calculator = WorkHoursCalculator()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section(header: Text("Invoice month")) {
+                Section(header: Text("Mês da fatura")) {
                     DatePicker(
-                        "Month",
+                        "Mês",
                         selection: $selectedMonth,
                         displayedComponents: [.date]
                     )
                 }
 
-                Section(header: Text("Rates")) {
-                    TextField("Hourly rate (USD/hour)", text: $hourlyRate)
+                Section(header: Text("Taxas")) {
+                    TextField("Valor hora (USD/hora)", text: $hourlyRate)
                         .applyDecimalKeyboard()
                     TextField("Spread (%)", text: $spreadPct)
                         .applyDecimalKeyboard()
                 }
 
-                Section(header: Text("Withdraw fees")) {
-                    TextField("Withdraw fee (%)", text: $withdrawFeePct)
+                Section(header: Text("Taxas de saque")) {
+                    TextField("Taxa de saque (%)", text: $withdrawFeePct)
                         .applyDecimalKeyboard()
-                    TextField("Withdraw fixed fee (BRL)", text: $withdrawFeeBrl)
+                    TextField("Taxa fixa de saque (BRL)", text: $withdrawFeeBrl)
                         .applyDecimalKeyboard()
                     TextField("IOF / extra (%)", text: $iofPct)
                         .applyDecimalKeyboard()
                 }
 
                 Section {
-                    Button("Generate invoice") {
+                    Button("Gerar fatura") {
                         generateInvoice()
                     }
                 }
 
                 if !resultText.isEmpty {
-                    Section(header: Text("Result")) {
+                    Section(header: Text("Resultado")) {
                         Text(resultText)
                             .font(.system(.body, design: .monospaced))
                     }
                 }
             }
-            .navigationTitle("Grinvo")
+            .toolbarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text("Grinvo - by Diego L.")
+                            .font(.headline)
+                        Text("Assistente de fatura mensal")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
+
+    // MARK: - Actions
 
     private func generateInvoice() {
         guard
@@ -70,7 +85,7 @@ struct ContentView: View {
             let withdrawFeeBrlValue = Double(withdrawFeeBrl),
             let iofPctValue = Double(iofPct)
         else {
-            resultText = "Invalid input values."
+            resultText = "Valores de entrada inválidos."
             return
         }
 

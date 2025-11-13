@@ -12,8 +12,7 @@ import UIKit
 
 struct ContentView: View {
     // State
-    @State private var selectedYear: Int
-    @State private var selectedMonthIndex: Int
+    @State private var selectedMonthYearIndex: Int
     @State private var hourlyRate = "15"
     @State private var spreadPct = "1.0"
     @State private var withdrawFeePct = "0.0"
@@ -27,7 +26,7 @@ struct ContentView: View {
     private let calculator = WorkHoursCalculator()
     private let calendar = Calendar.current
     
-    private let monthNames = [
+    private static let monthNames = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     ]
@@ -38,16 +37,53 @@ struct ContentView: View {
     }
     
     private var selectedMonthDate: Date {
-        calendar.date(from: DateComponents(year: selectedYear, month: selectedMonthIndex + 1, day: 1)) ?? Date()
+        guard monthYearOptions.indices.contains(selectedMonthYearIndex) else {
+            return Date()
+        }
+        return monthYearOptions[selectedMonthYearIndex].date
+    }
+    
+    private var monthYearOptions: [(label: String, date: Date)] {
+        ContentView.buildMonthYearOptions(calendar: calendar, years: years)
+    }
+    
+    private var selectedMonthYearLabel: String {
+        guard monthYearOptions.indices.contains(selectedMonthYearIndex) else {
+            return "Período selecionado"
+        }
+        return monthYearOptions[selectedMonthYearIndex].label
+    }
+    
+    private static func buildMonthYearOptions(
+        calendar: Calendar,
+        years: [Int]
+    ) -> [(label: String, date: Date)] {
+        var options: [(label: String, date: Date)] = []
+        
+        for year in years {
+            for month in 1...12 {
+                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else {
+                    continue
+                }
+                let label = "\(Self.monthNames[month - 1]) - \(year)"
+                options.append((label: label, date: date))
+            }
+        }
+        
+        return options.sorted { $0.date > $1.date }
     }
     
     init() {
         let now = Date()
         let calendar = Calendar.current
         let year = calendar.component(.year, from: now)
-        let month = calendar.component(.month, from: now)
-        _selectedYear = State(initialValue: year)
-        _selectedMonthIndex = State(initialValue: month - 1)
+        let years = [year - 1, year, year + 1]
+        let options = ContentView.buildMonthYearOptions(calendar: calendar, years: years)
+        let defaultIndex = options.firstIndex {
+            calendar.isDate($0.date, equalTo: now, toGranularity: .month) &&
+            calendar.isDate($0.date, equalTo: now, toGranularity: .year)
+        } ?? 0
+        _selectedMonthYearIndex = State(initialValue: defaultIndex)
     }
 
     var body: some View {
@@ -55,114 +91,104 @@ struct ContentView: View {
             ScrollViewReader { proxy in
                 Form {
                     Section(header: Text("Mês da fatura")) {
-                    HStack {
-                        Text("Mês")
-                        Spacer()
-                        Picker(selection: $selectedMonthIndex) {
-                            ForEach(0..<12) { index in
-                                Text(monthNames[index]).tag(index)
-                            }
-                        } label: {
-                            EmptyView()
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    
-                    HStack {
-                        Text("Ano")
-                        Spacer()
-                        Picker(selection: $selectedYear) {
-                            ForEach(years, id: \.self) { year in
-                                Text(String(year)).tag(year)
-                            }
-                        } label: {
-                            EmptyView()
-                        }
-                        .pickerStyle(.menu)
-                    }
-                }
-
-                Section(header: Text("Taxas")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Valor hora (USD/hora)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 15", text: $hourlyRate)
-                            .applyDecimalKeyboard()
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Spread (%)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Percentual deduzido após conversão USD→BRL")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 1.0", text: $spreadPct)
-                            .applyDecimalKeyboard()
-                    }
-                }
-                
-                Section(header: Text("Taxa de Câmbio (Opcional)")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Taxa manual (BRL/USD)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Deixe vazio para buscar automaticamente via API")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 5.40", text: $fxRateOverride)
-                            .applyDecimalKeyboard()
-                    }
-                }
-
-                Section(header: Text("Taxas de saque (opcional)")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Taxa percentual (%)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 1.2", text: $withdrawFeePct)
-                            .applyDecimalKeyboard()
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Taxa fixa (BRL)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 7.90", text: $withdrawFeeBrl)
-                            .applyDecimalKeyboard()
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("IOF / Taxa extra (%)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Ex: 0.38", text: $iofPct)
-                            .applyDecimalKeyboard()
-                    }
-                }
-
-                Section {
-                    Button("Gerar fatura") {
-                        hideKeyboard()
-                        Task {
-                            await generateInvoice()
-                        }
-                    }
-                    .disabled(isLoading)
-                    
-                    if isLoading {
                         HStack {
-                            ProgressView()
-                            Text("Buscando taxa de câmbio...")
+                            Text("Mês - Ano")
+                            Spacer()
+                            Picker(selection: $selectedMonthYearIndex) {
+                                ForEach(Array(monthYearOptions.enumerated()), id: \.offset) { index, option in
+                                    Text(option.label).tag(index)
+                                }
+                            } label: {
+                                EmptyView()
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+
+                    Section(header: Text("Taxas")) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Valor hora (USD/hora)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            TextField("Ex: 15", text: $hourlyRate)
+                                .applyDecimalKeyboard()
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Spread (%)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Percentual deduzido após conversão USD→BRL")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 1.0", text: $spreadPct)
+                                .applyDecimalKeyboard()
                         }
                     }
-                }
+                    
+                    Section(header: Text("Taxa de Câmbio (Opcional)")) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Taxa manual (BRL/USD)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Deixe vazio para buscar automaticamente via API")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 5.40", text: $fxRateOverride)
+                                .applyDecimalKeyboard()
+                        }
+                    }
+
+                    Section(header: Text("Taxas de saque (opcional)")) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Taxa percentual (%)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 1.2", text: $withdrawFeePct)
+                                .applyDecimalKeyboard()
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Taxa fixa (BRL)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 7.90", text: $withdrawFeeBrl)
+                                .applyDecimalKeyboard()
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("IOF / Taxa extra (%)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 0.38", text: $iofPct)
+                                .applyDecimalKeyboard()
+                        }
+                    }
+
+                    Section {
+                        Button("Gerar fatura") {
+                            hideKeyboard()
+                            Task {
+                                await generateInvoice()
+                            }
+                        }
+                        .disabled(isLoading)
+                        
+                        if isLoading {
+                            HStack {
+                                ProgressView()
+                                Text("Buscando taxa de câmbio...")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
 
                     if let result = result {
                         Section(header: Text("Resultado")) {
+                            Text("Fatura de \(selectedMonthYearLabel)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             ResultTableView(result: result)
                                 .id("result")
                         }
@@ -270,9 +296,21 @@ private extension View {
 struct ResultTableView: View {
     let result: WorkHoursResult
     
+    private static let brlFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "pt_BR")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.groupingSeparator = "."
+        formatter.decimalSeparator = ","
+        return formatter
+    }()
+    
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
+        formatter.timeZone = TimeZone.current
         // Use template to get locale-appropriate format
         let template = "ddMMyyyyEEE"
         if let dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: Locale.current) {
@@ -282,6 +320,14 @@ struct ResultTableView: View {
             formatter.dateFormat = "dd/MM/yyyy (EEE)"
         }
         return formatter
+    }
+    
+    private func formatCurrencyBRL(_ value: Double) -> String {
+        let isNegative = value < 0
+        let absoluteValue = abs(value)
+        let formatted = ResultTableView.brlFormatter.string(from: NSNumber(value: absoluteValue)) ?? String(format: "%.2f", absoluteValue)
+        let prefix = isNegative ? "-R$" : "R$"
+        return "\(prefix) \(formatted)"
     }
     
     var body: some View {
@@ -321,9 +367,9 @@ struct ResultTableView: View {
                         TableRow(label: "Data", value: asOf)
                     }
                     
-                    TableRow(label: "BRL bruto", value: String(format: "R$ %.2f", result.conversionGrossBrl))
-                    TableRow(label: "Spread (\(String(format: "%.2f", result.conversionGrossBrl > 0 ? result.spreadFeeBrl / result.conversionGrossBrl * 100 : 0))%)", value: String(format: "-R$ %.2f", result.spreadFeeBrl))
-                    TableRow(label: "BRL líquido", value: String(format: "R$ %.2f", result.conversionNetBrl), isHighlighted: true)
+                    TableRow(label: "BRL bruto", value: formatCurrencyBRL(result.conversionGrossBrl))
+                    TableRow(label: "Spread (\(String(format: "%.2f", result.conversionGrossBrl > 0 ? result.spreadFeeBrl / result.conversionGrossBrl * 100 : 0))%)", value: formatCurrencyBRL(-result.spreadFeeBrl))
+                    TableRow(label: "BRL líquido", value: formatCurrencyBRL(result.conversionNetBrl), isHighlighted: true)
                 }
                 
                 // Taxas de saque (se aplicável)
@@ -334,8 +380,8 @@ struct ResultTableView: View {
                         Text("Taxas de Saque")
                             .font(.headline)
                         
-                        TableRow(label: "Total de taxas", value: String(format: "-R$ %.2f", withdrawFees))
-                        TableRow(label: "Valor líquido final", value: String(format: "R$ %.2f", withdrawNet), isHighlighted: true)
+                        TableRow(label: "Total de taxas", value: formatCurrencyBRL(-withdrawFees))
+                        TableRow(label: "Valor líquido final", value: formatCurrencyBRL(withdrawNet), isHighlighted: true)
                     }
                 }
             } else {

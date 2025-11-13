@@ -3,6 +3,10 @@
 //  Grinvo
 //
 //  Created by Diego Lopes on 13/11/25.
+//  by Diego Lopes
+//
+//  Subtitle: Calculates hours and conversions to generate a monthly invoice (USD → BRL),
+//  including withdrawal fees and IOF simulation.
 //
 
 import Foundation
@@ -10,10 +14,10 @@ import Foundation
 struct WorkHoursCalculator {
 
     func calculate(options: WorkHoursOptions) -> WorkHoursResult {
-        // Aqui depois você vai portar a lógica real do work_hours.
-        // Por enquanto vamos só montar algo fake para testar o fluxo da tela.
+        // Later you'll port the real logic from work_hours.
+        // For now we just build something fake to test the screen flow.
 
-        let grossUsd = 160.0 * options.hourlyRate // ex: 160h no mês
+        let grossUsd = 160.0 * options.hourlyRate // e.g., 160h in the month
         let netUsd = grossUsd
         let fxRate = options.fxRate ?? 5.40
         let convertedBrl = netUsd * fxRate

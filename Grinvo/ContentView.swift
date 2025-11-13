@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedMonth = Date()
-    @State private var hourlyRate = "35"
+    @State private var hourlyRate = "18"
     @State private var spreadPct = "1.0"
     @State private var withdrawFeePct = "0.0"
     @State private var withdrawFeeBrl = "0.0"

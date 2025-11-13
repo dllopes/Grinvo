@@ -21,8 +21,11 @@ struct ContentView: View {
     @State private var isHiglobeEnabled = true
     @State private var result: WorkHoursResult?
     @State private var isLoading = false
+    @State private var hasCalculatedOnce = false
     @FocusState private var focusedField: Field?
     @State private var selectedTab: Tab = .home
+    @State private var calculationSequence = 0
+    @State private var calculationDebounceTask: Task<Void, Never>?
 
     // Dependencies
     private let calculator = WorkHoursCalculator()
@@ -115,17 +118,17 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: selectedTab) { newValue in
-            focusedField = nil
-            hideKeyboard()
-            if newValue == .result {
-                Task { await generateInvoice() }
-            }
-        }
         .simultaneousGesture(TapGesture().onEnded {
             focusedField = nil
         })
         .safeAreaPadding(.bottom, 140)
+        .onChange(of: selectedMonthYearIndex) { _ in triggerAutoCalculation() }
+        .onChange(of: hourlyRate) { _ in triggerAutoCalculation() }
+        .onChange(of: fxRateOverride) { _ in triggerAutoCalculation() }
+        .onChange(of: nomadFeePct) { _ in triggerAutoCalculation() }
+        .onChange(of: higlobeFeePct) { _ in triggerAutoCalculation() }
+        .onChange(of: isNomadEnabled) { _ in triggerAutoCalculation() }
+        .onChange(of: isHiglobeEnabled) { _ in triggerAutoCalculation() }
     }
     
     private enum Tab: String, CaseIterable {
@@ -135,7 +138,7 @@ struct ContentView: View {
         var title: String {
             switch self {
             case .home: return "Principal"
-            case .result: return "Calcular Saque"
+            case .result: return "Resumo"
             }
         }
         
@@ -237,7 +240,7 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         Text("Grinvo - by Diego L.")
                             .font(.headline)
-                        Text(selectedTab == .home ? "Assistente de fatura mensal" : "Resumo de saque")
+                        Text("Gringo + Invoice")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -246,10 +249,8 @@ struct ContentView: View {
             .onChange(of: selectedTab) { newValue in
                 focusedField = nil
                 hideKeyboard()
-                if newValue == .result {
-                    Task {
-                        await generateInvoice()
-                    }
+                if newValue == .result && !hasCalculatedOnce {
+                    triggerAutoCalculation(immediate: true)
                 }
             }
         }
@@ -269,9 +270,14 @@ struct ContentView: View {
                 }
                 
                 if let result = result {
-                    Text("Último cálculo")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Último cálculo")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Text("Período: \(selectedMonthYearLabel)")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                    }
                     ResultTableView(result: result)
                 } else {
                     VStack(spacing: 12) {
@@ -338,14 +344,17 @@ struct ContentView: View {
 
     // MARK: - Actions
 
-    private func generateInvoice() async {
+    private func generateInvoice(calculationID: Int) async {
         guard
             let hourlyRateValue = Double(hourlyRate),
             (!isNomadEnabled || Double(nomadFeePct) != nil),
             (!isHiglobeEnabled || Double(higlobeFeePct) != nil)
         else {
             await MainActor.run {
-                result = nil
+                if calculationID == calculationSequence {
+                    result = nil
+                    isLoading = false
+                }
             }
             return
         }
@@ -357,6 +366,7 @@ struct ContentView: View {
         let fxRateOverrideValue: Double? = fxRateOverride.isEmpty ? nil : Double(fxRateOverride)
 
         await MainActor.run {
+            guard calculationID == calculationSequence else { return }
             isLoading = true
         }
         
@@ -374,10 +384,25 @@ struct ContentView: View {
         )
 
         let calculatedResult = await calculator.calculate(options: options)
-        
         await MainActor.run {
+            guard calculationID == calculationSequence else { return }
             result = calculatedResult
             isLoading = false
+            hasCalculatedOnce = true
+        }
+    }
+    
+    @MainActor
+    private func triggerAutoCalculation(immediate: Bool = false) {
+        calculationSequence += 1
+        let requestID = calculationSequence
+        calculationDebounceTask?.cancel()
+        calculationDebounceTask = Task {
+            if !immediate {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            await generateInvoice(calculationID: requestID)
         }
     }
 }

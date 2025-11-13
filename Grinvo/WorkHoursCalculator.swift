@@ -58,7 +58,9 @@ struct WorkHoursCalculator {
         let fxRate: FXRate?
         if let overrideRate = options.fxRate {
             let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm zzz"
+            formatter.locale = Locale.current
+            formatter.dateFormat = "dd/MM/yyyy HH:mm"
+            formatter.timeZone = TimeZone.current
             fxRate = FXRate(
                 rate: overrideRate,
                 source: options.fxLabel ?? "Manual override",
@@ -300,6 +302,7 @@ struct WorkHoursCalculator {
         mode: WorkHoursOptions.Mode
     ) -> String {
         let formatter = DateFormatter()
+        formatter.locale = Locale.current
         formatter.dateFormat = "MMMM yyyy"
         let monthStr = formatter.string(from: month)
         
@@ -336,7 +339,14 @@ struct WorkHoursCalculator {
         
         if !paidHolidayDates.isEmpty {
             let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd (EEE)"
+            dateFormatter.locale = Locale.current
+            // Use template to get locale-appropriate format
+            let template = "ddMMyyyyEEE"
+            if let dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: Locale.current) {
+                dateFormatter.dateFormat = dateFormat
+            } else {
+                dateFormatter.dateFormat = "dd/MM/yyyy (EEE)"
+            }
             let holidayList = paidHolidayDates.map { dateFormatter.string(from: $0) }.joined(separator: ", ")
             summary += "  Holidays in month: \(holidayList)\n"
         }

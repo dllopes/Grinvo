@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct ContentView: View {
     // State
@@ -49,8 +52,9 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text("Mês da fatura")) {
+            ScrollViewReader { proxy in
+                Form {
+                    Section(header: Text("Mês da fatura")) {
                     HStack {
                         Text("Mês")
                         Spacer()
@@ -140,6 +144,7 @@ struct ContentView: View {
 
                 Section {
                     Button("Gerar fatura") {
+                        hideKeyboard()
                         Task {
                             await generateInvoice()
                         }
@@ -156,9 +161,20 @@ struct ContentView: View {
                     }
                 }
 
-                if let result = result {
-                    Section(header: Text("Resultado")) {
-                        ResultTableView(result: result)
+                    if let result = result {
+                        Section(header: Text("Resultado")) {
+                            ResultTableView(result: result)
+                                .id("result")
+                        }
+                    }
+                }
+                .onChange(of: result) { _ in
+                    if result != nil {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation {
+                                proxy.scrollTo("result", anchor: .top)
+                            }
+                        }
                     }
                 }
             }
@@ -241,6 +257,12 @@ private extension View {
             self
         }
     }
+    
+    func hideKeyboard() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
 }
 
 // MARK: - Result Table View
@@ -250,7 +272,15 @@ struct ResultTableView: View {
     
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = "dd/MM/yyyy (EEE)"
+        formatter.locale = Locale.current
+        // Use template to get locale-appropriate format
+        let template = "ddMMyyyyEEE"
+        if let dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: Locale.current) {
+            formatter.dateFormat = dateFormat
+        } else {
+            // Fallback format
+            formatter.dateFormat = "dd/MM/yyyy (EEE)"
+        }
         return formatter
     }
     

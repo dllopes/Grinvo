@@ -119,9 +119,10 @@ class FXRateService {
             
             let date = Date(timeIntervalSince1970: timestamp)
             let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm UTC"
+            formatter.locale = Locale.current
+            formatter.dateFormat = "dd/MM/yyyy HH:mm"
             formatter.timeZone = TimeZone(abbreviation: "UTC")
-            let asOf = formatter.string(from: date)
+            let asOf = formatter.string(from: date) + " UTC"
             
             return FXRate(
                 rate: ask,

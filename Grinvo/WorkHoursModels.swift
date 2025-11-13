@@ -50,7 +50,7 @@ struct WorkHoursOptions {
     }
 }
 
-struct WorkHoursResult {
+struct WorkHoursResult: Equatable {
     var summaryText: String
     var grossUsd: Double
     var netUsd: Double

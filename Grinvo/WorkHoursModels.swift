@@ -10,10 +10,8 @@ import Foundation
 struct WorkHoursOptions {
     var month: Date
     var hourlyRate: Double
-    var spreadPct: Double
-    var withdrawFeePct: Double
-    var withdrawFeeBrl: Double
-    var iofPct: Double
+    var nomadFeePct: Double
+    var higlobeFeePct: Double
     var fxRate: Double?
     var fxLabel: String?
     var mode: Mode
@@ -28,10 +26,8 @@ struct WorkHoursOptions {
     init(
         month: Date,
         hourlyRate: Double,
-        spreadPct: Double,
-        withdrawFeePct: Double,
-        withdrawFeeBrl: Double,
-        iofPct: Double,
+        nomadFeePct: Double,
+        higlobeFeePct: Double,
         fxRate: Double? = nil,
         fxLabel: String? = nil,
         mode: Mode = .both,
@@ -39,10 +35,8 @@ struct WorkHoursOptions {
     ) {
         self.month = month
         self.hourlyRate = hourlyRate
-        self.spreadPct = spreadPct
-        self.withdrawFeePct = withdrawFeePct
-        self.withdrawFeeBrl = withdrawFeeBrl
-        self.iofPct = iofPct
+        self.nomadFeePct = nomadFeePct
+        self.higlobeFeePct = higlobeFeePct
         self.fxRate = fxRate
         self.fxLabel = fxLabel
         self.mode = mode
@@ -55,8 +49,12 @@ struct WorkHoursResult: Equatable {
     var grossUsd: Double
     var netUsd: Double
     var convertedBrl: Double
-    var withdrawFeesBrl: Double?
-    var withdrawNetBrl: Double?
+    var nomadFeePct: Double
+    var nomadFeesBrl: Double?
+    var nomadNetBrl: Double?
+    var higlobeFeePct: Double
+    var higlobeFeesBrl: Double?
+    var higlobeNetBrl: Double?
     
     // Detailed breakdown
     var workDays: Int
@@ -69,6 +67,4 @@ struct WorkHoursResult: Equatable {
     var fxSource: String?
     var fxAsOf: String?
     var conversionGrossBrl: Double
-    var spreadFeeBrl: Double
-    var conversionNetBrl: Double
 }

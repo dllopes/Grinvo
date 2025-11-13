@@ -14,10 +14,8 @@ struct ContentView: View {
     // State
     @State private var selectedMonthYearIndex: Int
     @State private var hourlyRate = "15"
-    @State private var spreadPct = "1.0"
-    @State private var withdrawFeePct = "0.0"
-    @State private var withdrawFeeBrl = "0.0"
-    @State private var iofPct = "0.0"
+    @State private var nomadFeePct = "1.0"
+    @State private var higlobeFeePct = "0.3"
     @State private var fxRateOverride = ""
     @State private var result: WorkHoursResult?
     @State private var isLoading = false
@@ -113,17 +111,6 @@ struct ContentView: View {
                             TextField("Ex: 15", text: $hourlyRate)
                                 .applyDecimalKeyboard()
                         }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Spread (%)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Percentual deduzido após conversão USD→BRL")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            TextField("Ex: 1.0", text: $spreadPct)
-                                .applyDecimalKeyboard()
-                        }
                     }
                     
                     Section(header: Text("Taxa de Câmbio (Opcional)")) {
@@ -139,28 +126,26 @@ struct ContentView: View {
                         }
                     }
 
-                    Section(header: Text("Taxas de saque (opcional)")) {
+                    Section(header: Text("Taxas de saque")) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Taxa percentual (%)")
+                            Text("Nomad / Husky (%)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            TextField("Ex: 1.2", text: $withdrawFeePct)
+                            Text("Percentual descontado pela Nomad/Husky ao enviar BRL")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            TextField("Ex: 1.0", text: $nomadFeePct)
                                 .applyDecimalKeyboard()
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Taxa fixa (BRL)")
+                            Text("HiGlobe (%)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            TextField("Ex: 7.90", text: $withdrawFeeBrl)
-                                .applyDecimalKeyboard()
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("IOF / Taxa extra (%)")
-                                .font(.caption)
+                            Text("Percentual descontado pela HiGlobe ao enviar BRL")
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
-                            TextField("Ex: 0.38", text: $iofPct)
+                            TextField("Ex: 0.3", text: $higlobeFeePct)
                                 .applyDecimalKeyboard()
                         }
                     }
@@ -224,10 +209,8 @@ struct ContentView: View {
     private func generateInvoice() async {
         guard
             let hourlyRateValue = Double(hourlyRate),
-            let spreadValue = Double(spreadPct),
-            let withdrawFeePctValue = Double(withdrawFeePct),
-            let withdrawFeeBrlValue = Double(withdrawFeeBrl),
-            let iofPctValue = Double(iofPct)
+            let nomadFeePctValue = Double(nomadFeePct),
+            let higlobeFeePctValue = Double(higlobeFeePct)
         else {
             await MainActor.run {
                 result = nil
@@ -245,10 +228,8 @@ struct ContentView: View {
         let options = WorkHoursOptions(
             month: selectedMonthDate,
             hourlyRate: hourlyRateValue,
-            spreadPct: spreadValue,
-            withdrawFeePct: withdrawFeePctValue,
-            withdrawFeeBrl: withdrawFeeBrlValue,
-            iofPct: iofPctValue,
+            nomadFeePct: nomadFeePctValue,
+            higlobeFeePct: higlobeFeePctValue,
             fxRate: fxRateOverrideValue,
             fxLabel: nil, // Always use default "Manual override" label
             mode: .both,
@@ -367,21 +348,32 @@ struct ResultTableView: View {
                         TableRow(label: "Data", value: asOf)
                     }
                     
-                    TableRow(label: "BRL bruto", value: formatCurrencyBRL(result.conversionGrossBrl))
-                    TableRow(label: "Spread (\(String(format: "%.2f", result.conversionGrossBrl > 0 ? result.spreadFeeBrl / result.conversionGrossBrl * 100 : 0))%)", value: formatCurrencyBRL(-result.spreadFeeBrl))
-                    TableRow(label: "BRL líquido", value: formatCurrencyBRL(result.conversionNetBrl), isHighlighted: true)
+                    TableRow(label: "BRL convertido", value: formatCurrencyBRL(result.conversionGrossBrl), isHighlighted: true)
                 }
                 
-                // Taxas de saque (se aplicável)
-                if let withdrawFees = result.withdrawFeesBrl, let withdrawNet = result.withdrawNetBrl {
+                if let nomadFees = result.nomadFeesBrl,
+                   let nomadNet = result.nomadNetBrl {
                     Divider()
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Taxas de Saque")
+                        Text("Nomad / Husky (\(String(format: "%.2f", result.nomadFeePct))%)")
                             .font(.headline)
                         
-                        TableRow(label: "Total de taxas", value: formatCurrencyBRL(-withdrawFees))
-                        TableRow(label: "Valor líquido final", value: formatCurrencyBRL(withdrawNet), isHighlighted: true)
+                        TableRow(label: "Taxas", value: formatCurrencyBRL(-nomadFees))
+                        TableRow(label: "Líquido", value: formatCurrencyBRL(nomadNet), isHighlighted: true)
+                    }
+                }
+                
+                if let higlobeFees = result.higlobeFeesBrl,
+                   let higlobeNet = result.higlobeNetBrl {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("HiGlobe (\(String(format: "%.2f", result.higlobeFeePct))%)")
+                            .font(.headline)
+                        
+                        TableRow(label: "Taxas", value: formatCurrencyBRL(-higlobeFees))
+                        TableRow(label: "Líquido", value: formatCurrencyBRL(higlobeNet), isHighlighted: true)
                     }
                 }
             } else {

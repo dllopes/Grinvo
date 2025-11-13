@@ -72,25 +72,22 @@ struct WorkHoursCalculator {
         
         // Calculate BRL conversion
         var conversionGrossBrl: Double = 0
-        var spreadFeeBrl: Double = 0
-        var conversionNetBrl: Double = 0
-        var withdrawFeesBrl: Double? = nil
-        var withdrawNetBrl: Double? = nil
+        var nomadFeesBrl: Double? = nil
+        var nomadNetBrl: Double? = nil
+        var higlobeFeesBrl: Double? = nil
+        var higlobeNetBrl: Double? = nil
         
         if let fx = fxRate {
             conversionGrossBrl = amountUsd * fx.rate
-            spreadFeeBrl = conversionGrossBrl * (options.spreadPct / 100.0)
-            conversionNetBrl = conversionGrossBrl - spreadFeeBrl
             
-            // Calculate withdraw fees if applicable
-            let extraFeesPresent = options.withdrawFeePct > 0.0 || 
-                                   options.iofPct > 0.0 || 
-                                   options.withdrawFeeBrl > 0.0
-            
-            if extraFeesPresent && (options.mode == .withdraw || options.mode == .both) {
-                let pctTotal = (options.withdrawFeePct + options.iofPct) / 100.0
-                withdrawFeesBrl = (conversionNetBrl * pctTotal) + options.withdrawFeeBrl
-                withdrawNetBrl = conversionNetBrl - (withdrawFeesBrl ?? 0)
+            if options.mode == .withdraw || options.mode == .both {
+                let nomad = calculatePayout(conversionAmount: conversionGrossBrl, feePct: options.nomadFeePct)
+                nomadFeesBrl = nomad.fees
+                nomadNetBrl = nomad.net
+                
+                let higlobe = calculatePayout(conversionAmount: conversionGrossBrl, feePct: options.higlobeFeePct)
+                higlobeFeesBrl = higlobe.fees
+                higlobeNetBrl = higlobe.net
             }
         }
         
@@ -106,14 +103,12 @@ struct WorkHoursCalculator {
             amountUsd: amountUsd,
             fxRate: fxRate,
             conversionGrossBrl: conversionGrossBrl,
-            spreadPct: options.spreadPct,
-            spreadFeeBrl: spreadFeeBrl,
-            conversionNetBrl: conversionNetBrl,
-            withdrawFeePct: options.withdrawFeePct,
-            iofPct: options.iofPct,
-            withdrawFeeBrl: options.withdrawFeeBrl,
-            withdrawFeesBrl: withdrawFeesBrl,
-            withdrawNetBrl: withdrawNetBrl,
+            nomadFeePct: options.nomadFeePct,
+            nomadFeesBrl: nomadFeesBrl,
+            nomadNetBrl: nomadNetBrl,
+            higlobeFeePct: options.higlobeFeePct,
+            higlobeFeesBrl: higlobeFeesBrl,
+            higlobeNetBrl: higlobeNetBrl,
             paidHolidayDates: paidHolidays,
             mode: options.mode
         )
@@ -122,9 +117,13 @@ struct WorkHoursCalculator {
             summaryText: summary,
             grossUsd: amountUsd,
             netUsd: amountUsd,
-            convertedBrl: conversionNetBrl,
-            withdrawFeesBrl: withdrawFeesBrl,
-            withdrawNetBrl: withdrawNetBrl,
+            convertedBrl: conversionGrossBrl,
+            nomadFeePct: options.nomadFeePct,
+            nomadFeesBrl: nomadFeesBrl,
+            nomadNetBrl: nomadNetBrl,
+            higlobeFeePct: options.higlobeFeePct,
+            higlobeFeesBrl: higlobeFeesBrl,
+            higlobeNetBrl: higlobeNetBrl,
             workDays: workDays.count,
             workHours: workHours,
             paidHolidays: paidHolidays.count,
@@ -134,9 +133,7 @@ struct WorkHoursCalculator {
             fxRate: fxRate?.rate,
             fxSource: fxRate?.source,
             fxAsOf: fxRate?.asOf,
-            conversionGrossBrl: conversionGrossBrl,
-            spreadFeeBrl: spreadFeeBrl,
-            conversionNetBrl: conversionNetBrl
+            conversionGrossBrl: conversionGrossBrl
         )
     }
     
@@ -290,14 +287,12 @@ struct WorkHoursCalculator {
         amountUsd: Double,
         fxRate: FXRate?,
         conversionGrossBrl: Double,
-        spreadPct: Double,
-        spreadFeeBrl: Double,
-        conversionNetBrl: Double,
-        withdrawFeePct: Double,
-        iofPct: Double,
-        withdrawFeeBrl: Double,
-        withdrawFeesBrl: Double?,
-        withdrawNetBrl: Double?,
+        nomadFeePct: Double,
+        nomadFeesBrl: Double?,
+        nomadNetBrl: Double?,
+        higlobeFeePct: Double,
+        higlobeFeesBrl: Double?,
+        higlobeNetBrl: Double?,
         paidHolidayDates: [Date],
         mode: WorkHoursOptions.Mode
     ) -> String {
@@ -315,22 +310,25 @@ struct WorkHoursCalculator {
         
         if let fx = fxRate {
             summary += "  FX Base Rate:    \(String(format: "%.4f", fx.rate)) BRL/USD (\(fx.source), as of \(fx.asOf))\n"
-            summary += "  Spread (post-conv deduction): \(String(format: "%.2f", spreadPct))%\n"
-            summary += "  Conversion (BRL, gross):      R$ \(String(format: "%.2f", conversionGrossBrl))\n"
-            summary += "  Spread fee (BRL):             R$ \(String(format: "%.2f", spreadFeeBrl))\n"
-            summary += "  Conversion (BRL, net after spread): R$ \(String(format: "%.2f", conversionNetBrl))\n"
+            summary += "  Conversão (BRL): R$ \(String(format: "%.2f", conversionGrossBrl))\n"
             
-            let extraFeesPresent = withdrawFeePct > 0.0 || iofPct > 0.0 || withdrawFeeBrl > 0.0
-            if extraFeesPresent && (mode == .withdraw || mode == .both) {
-                summary += "  --- Withdraw (extra fees over BRL after spread) ---\n"
-                summary += "    Fees %:              \(String(format: "%.2f", withdrawFeePct))%\n"
-                summary += "    Extra % (IOF/taxes): \(String(format: "%.2f", iofPct))%\n"
-                summary += "    Fixed fee (BRL):     R$ \(String(format: "%.2f", withdrawFeeBrl))\n"
-                if let fees = withdrawFeesBrl {
-                    summary += "    Total fees (BRL):    R$ \(String(format: "%.2f", fees))\n"
+            if mode == .withdraw || mode == .both {
+                summary += "  --- Nomad / Husky ---\n"
+                summary += "    Taxa: \(String(format: "%.2f", nomadFeePct))%\n"
+                if let fees = nomadFeesBrl {
+                    summary += "    Tarifas: R$ \(String(format: "%.2f", fees))\n"
                 }
-                if let net = withdrawNetBrl {
-                    summary += "    Net after withdraw:  R$ \(String(format: "%.2f", net))\n"
+                if let net = nomadNetBrl {
+                    summary += "    Líquido: R$ \(String(format: "%.2f", net))\n"
+                }
+                
+                summary += "  --- HiGlobe ---\n"
+                summary += "    Taxa: \(String(format: "%.2f", higlobeFeePct))%\n"
+                if let fees = higlobeFeesBrl {
+                    summary += "    Tarifas: R$ \(String(format: "%.2f", fees))\n"
+                }
+                if let net = higlobeNetBrl {
+                    summary += "    Líquido: R$ \(String(format: "%.2f", net))\n"
                 }
             }
         } else {
@@ -356,16 +354,13 @@ struct WorkHoursCalculator {
     
     // MARK: - Helper Methods
     
-    func calculateWithdraw(
-        conversionNet: Double,
-        withdrawFeePct: Double,
-        iofPct: Double,
-        withdrawFeeBrl: Double
+    private func calculatePayout(
+        conversionAmount: Double,
+        feePct: Double
     ) -> (fees: Double, net: Double) {
-        let pctTotal = (withdrawFeePct + iofPct) / 100.0
-        let withdrawFees = (conversionNet * pctTotal) + withdrawFeeBrl
-        let withdrawNet = conversionNet - withdrawFees
-        return (fees: withdrawFees, net: withdrawNet)
+        let fees = conversionAmount * (feePct / 100.0)
+        let net = conversionAmount - fees
+        return (fees: fees, net: net)
     }
     
     private func createErrorResult(message: String) -> WorkHoursResult {
@@ -374,8 +369,12 @@ struct WorkHoursCalculator {
             grossUsd: 0,
             netUsd: 0,
             convertedBrl: 0,
-            withdrawFeesBrl: nil,
-            withdrawNetBrl: nil,
+            nomadFeePct: 0,
+            nomadFeesBrl: nil,
+            nomadNetBrl: nil,
+            higlobeFeePct: 0,
+            higlobeFeesBrl: nil,
+            higlobeNetBrl: nil,
             workDays: 0,
             workHours: 0,
             paidHolidays: 0,
@@ -385,9 +384,7 @@ struct WorkHoursCalculator {
             fxRate: nil,
             fxSource: nil,
             fxAsOf: nil,
-            conversionGrossBrl: 0,
-            spreadFeeBrl: 0,
-            conversionNetBrl: 0
+            conversionGrossBrl: 0
         )
     }
 }

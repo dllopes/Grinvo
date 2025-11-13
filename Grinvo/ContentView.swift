@@ -277,6 +277,35 @@ private extension View {
 struct ResultTableView: View {
     let result: WorkHoursResult
     
+    private struct PayoutEntry: Identifiable {
+        let title: String
+        let feePct: Double
+        let fees: Double
+        let net: Double
+        
+        var id: String { title }
+    }
+    
+    private enum Medal {
+        case gold
+        case silver
+        
+        var symbolName: String { "medal.fill" }
+        var color: Color {
+            switch self {
+            case .gold: return .yellow
+            case .silver: return .gray
+            }
+        }
+        
+        var accessibilityLabel: String {
+            switch self {
+            case .gold: return "Medalha de ouro"
+            case .silver: return "Medalha de prata"
+            }
+        }
+    }
+    
     private static let brlFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "pt_BR")
@@ -301,6 +330,29 @@ struct ResultTableView: View {
             formatter.dateFormat = "dd/MM/yyyy (EEE)"
         }
         return formatter
+    }
+    
+    private var payoutEntries: [PayoutEntry] {
+        var entries: [PayoutEntry] = []
+        if let fees = result.nomadFeesBrl, let net = result.nomadNetBrl {
+            entries.append(PayoutEntry(title: "Nomad / Husky", feePct: result.nomadFeePct, fees: fees, net: net))
+        }
+        if let fees = result.higlobeFeesBrl, let net = result.higlobeNetBrl {
+            entries.append(PayoutEntry(title: "HiGlobe", feePct: result.higlobeFeePct, fees: fees, net: net))
+        }
+        return entries
+    }
+    
+    private var medalAssignments: [String: Medal] {
+        let sorted = payoutEntries.sorted { $0.net > $1.net }
+        var assignments: [String: Medal] = [:]
+        if let first = sorted.first {
+            assignments[first.title] = .gold
+        }
+        if sorted.count > 1 {
+            assignments[sorted[1].title] = .silver
+        }
+        return assignments
     }
     
     private func formatCurrencyBRL(_ value: Double) -> String {
@@ -351,29 +403,23 @@ struct ResultTableView: View {
                     TableRow(label: "BRL convertido", value: formatCurrencyBRL(result.conversionGrossBrl), isHighlighted: true)
                 }
                 
-                if let nomadFees = result.nomadFeesBrl,
-                   let nomadNet = result.nomadNetBrl {
+                ForEach(payoutEntries) { entry in
                     Divider()
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Nomad / Husky (\(String(format: "%.2f", result.nomadFeePct))%)")
-                            .font(.headline)
+                        HStack(spacing: 6) {
+                            Text("\(entry.title) (\(String(format: "%.2f", entry.feePct))%)")
+                                .font(.headline)
+                            if let medal = medalAssignments[entry.title] {
+                                Image(systemName: medal.symbolName)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(medal.color)
+                                    .accessibilityLabel(Text(medal.accessibilityLabel))
+                            }
+                        }
                         
-                        TableRow(label: "Taxas", value: formatCurrencyBRL(-nomadFees))
-                        TableRow(label: "Líquido", value: formatCurrencyBRL(nomadNet), isHighlighted: true)
-                    }
-                }
-                
-                if let higlobeFees = result.higlobeFeesBrl,
-                   let higlobeNet = result.higlobeNetBrl {
-                    Divider()
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("HiGlobe (\(String(format: "%.2f", result.higlobeFeePct))%)")
-                            .font(.headline)
-                        
-                        TableRow(label: "Taxas", value: formatCurrencyBRL(-higlobeFees))
-                        TableRow(label: "Líquido", value: formatCurrencyBRL(higlobeNet), isHighlighted: true)
+                        TableRow(label: "Taxas", value: formatCurrencyBRL(-entry.fees))
+                        TableRow(label: "Líquido", value: formatCurrencyBRL(entry.net), isHighlighted: true)
                     }
                 }
             } else {
